@@ -16,7 +16,7 @@ from datetime import datetime
 timestamp="{:%Y_%m_%d_%H_%M}".format(datetime.now())
 
 # load params to undistort images
-calfile=np.load('camera_cal_data_2016_02_20_03_09.npz')
+calfile=np.load('camera_cal_data_2016_03_25_15_23.npz')
 newcameramtx=calfile['newcameramtx']
 roi=calfile['roi']
 mtx=calfile['mtx']
@@ -31,7 +31,7 @@ params.maxThreshold = 256;
  
 # Filter by Area.
 params.filterByArea = True
-params.minArea = 5
+params.minArea = 30
  
 # Filter by Circularity
 params.filterByCircularity = True
@@ -58,10 +58,10 @@ def add_blobs(crop_frame):
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     # define range of green color in HSV
     lower_green = np.array([60,20,20])
-    upper_green = np.array([95,255,255])
+    upper_green = np.array([80,255,255])
     # Threshold the HSV image to get only blue colors
     mask = cv2.inRange(hsv, lower_green, upper_green)
-    mask = cv2.erode(mask, None, iterations=1)
+    mask = cv2.erode(mask, None, iterations=2)
     mask = cv2.dilate(mask, None, iterations=1)    
     # Bitwise-AND mask and original image
     res = cv2.bitwise_and(frame,frame, mask= mask)
@@ -91,7 +91,7 @@ def add_blobs(crop_frame):
 
             idx=np.argmax(dcalc) # find two furthest points, those are left and right sidepoints
             max_dist_val=np.max(dcalc)            
-            print max_dist_val
+            #print max_dist_val
             if idx ==0:
                 sidepts=[0,1]
             elif idx==1:
@@ -154,15 +154,22 @@ def add_blobs(crop_frame):
 cv2.namedWindow("preview")
 vc = cv2.VideoCapture(1)
 
-fname="drone_green_dot"
+fname="drone_track_640_480_USBFHD01M"
 width=640
 height=480
+fps=30
 wait_time=1
-fps=int(1/.001/(float(wait_time)))
-vc.set(3,width)
-vc.set(4,height)
+#fps=int(1/.001/(float(wait_time)))
+#vc.set(3,width)
+#vc.set(4,height)
+vc.set(cv2.CAP_PROP_FRAME_WIDTH,width)
+vc.set(cv2.CAP_PROP_FRAME_HEIGHT,height)
+vc.set(cv2.CAP_PROP_FPS,fps) 
+
+
+
 fourcc = cv2.VideoWriter_fourcc(*'DIVX')
-out = cv2.VideoWriter('output13'+timestamp+'.avi',fourcc, 30.0, (width,height),1)
+out = cv2.VideoWriter('output13'+timestamp+'.avi',fourcc, 20.0, (width,height),1)
 
 import serial, time, msvcrt
 
@@ -194,8 +201,10 @@ zspeed=0
 speeds=""
 
 font = cv2.FONT_HERSHEY_SIMPLEX
+tic=timeit.default_timer()
+toc=0
 try: 
-    arduino=serial.Serial('COM3', 115200, timeout=.01)
+    arduino=serial.Serial('COM3', 115200, timeout=.001)
     time.sleep(1) #give the connection a second to settle    
     
     if vc.isOpened(): # try to get the first frame
@@ -203,21 +212,22 @@ try:
         #frame_undistort=undistort_crop(np.rot90(frame_o, 2))
         frame_undistort=undistort_crop(frame_o)   
         frame, zpos, xypos=add_blobs(frame_undistort)
+        #frame, zpos, xypos=add_blobs(frame_o)
     else:
         rval = False
     ii=100
     while rval:
-        
-        cv2.imshow("preview", frame)
-        
-        key = cv2.waitKey(wait_time)
-        rval, frame_o = vc.read()
-        #frame_undistort=undistort_crop(np.rot90(frame_o, 2))
+        toc_old=toc        
+        toc=timeit.default_timer()
+        print("deltaT: %0.4f  fps: %0.1f" % (toc - toc_old, 1/(toc-toc_old)))
         frame_undistort=undistort_crop(frame_o)
         frame, zpos, xypos=add_blobs(frame_undistort)
-        
+        #zpos=999
+        #xypos=(20,30)
+        #frame=frame_o
         ## Serial comms
         data = arduino.readline()
+        #data=0        
         while data:
             print "[AU]: "+data.rstrip("\n") #strip out the new lines for now
             # (better to do .read() in the long run for this reason    
@@ -232,8 +242,6 @@ try:
         aileron=max(aileron, 1490)
         elevator=max(elevator, 1490)
         rudder=max(rudder, 1400)               
-        
-        
         
         command="%i,%i,%i,%i"% (throttle, aileron, elevator, rudder)
         print "[PC]: "+command
@@ -255,14 +263,11 @@ try:
         cv2.putText(frame, targets,(10,200), font, .8,(255,255,255),2,cv2.LINE_AA) 
         if start_flying:
             
-            frame_pad=cv2.copyMakeBorder(frame,111,0,86,00,cv2.BORDER_CONSTANT,value=[255,0,0])
+            frame_pad=cv2.copyMakeBorder(frame,91,0,75,00,cv2.BORDER_CONSTANT,value=[255,0,0])
             out.write(frame_pad)
             try: 
                 print "Zpos: %i Xpos: %i Ypos: %i" % (zpos, xypos[0], xypos[1])
 
-                
-
-                
                 # compare to target speed               
                 if dz > zspeed:
                     throttle-=tg
@@ -285,7 +290,7 @@ try:
                     aileron=clamp(aileron, 1495, 1510)
                     elevator=clamp(elevator, 1495, 1510)
                 else: 
-                    print "lowalt"
+                    print "lowalt" 
                     aileron=clamp(aileron, 1499, 1501)
                     elevator=clamp(elevator, 1499, 1501)
                 # set target speeds                
@@ -309,7 +314,11 @@ try:
                 if no_position_cnt>15:
                     throttle=1000
                     start_flying=0  
+        
         ## Monitor keyboard
+        cv2.imshow("preview", frame)
+        key = cv2.waitKey(wait_time)
+        
         if key == 27: # exit on ESC
             break
         elif key == 32:
@@ -325,8 +334,10 @@ try:
         elif key == 115: #s
             throttle=1000
             start_flying=0
-            
-            
+        toc2=timeit.default_timer()
+        print("deltaT_execute: %0.4f" % (toc2 - toc))
+        rval, frame_o = vc.read()
+        
             
 finally:
     # close the connection
