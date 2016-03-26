@@ -200,6 +200,24 @@ yspeed=0
 zspeed=0
 speeds=""
 
+e_iz=0
+Kpz=-25.0
+Kiz=-4
+
+e_ix=0
+Kpx=-30.0
+Kix=-2
+
+e_iy=0
+Kpy=30.0
+Kiy=2
+
+clamp=lambda n, minn, maxn: (max(min(maxn, n), minn))
+
+THROTTLE_MID=1400
+ELEVATOR_MID=1500
+AILERON_MID=1500
+
 font = cv2.FONT_HERSHEY_SIMPLEX
 tic=timeit.default_timer()
 toc=0
@@ -222,42 +240,40 @@ try:
         print("deltaT: %0.4f  fps: %0.1f" % (toc - toc_old, 1/(toc-toc_old)))
         frame_undistort=undistort_crop(frame_o)
         frame, zpos, xypos=add_blobs(frame_undistort)
-        #zpos=999
-        #xypos=(20,30)
-        #frame=frame_o
+      
         ## Serial comms
         data = arduino.readline()
-        #data=0        
+      
         while data:
             print "[AU]: "+data.rstrip("\n") #strip out the new lines for now
             # (better to do .read() in the long run for this reason    
             data=arduino.readline()
 
         throttle=min(throttle, 2000)
-        aileron=min(aileron, 1510)
-        elevator=min(elevator, 1510)
-        rudder=min(rudder, 1600)        
+        #aileron=min(aileron, 1510)
+        #elevator=min(elevator, 1510)
+        #rudder=min(rudder, 1600)        
         
         throttle=max(throttle, 1000)
-        aileron=max(aileron, 1490)
-        elevator=max(elevator, 1490)
-        rudder=max(rudder, 1400)               
+        #aileron=max(aileron, 1490)
+        #elevator=max(elevator, 1490)
+        #rudder=max(rudder, 1400)               
         
         command="%i,%i,%i,%i"% (throttle, aileron, elevator, rudder)
         print "[PC]: "+command
         arduino.write(command+"\n")
         try:
-            dz=(zpos-oldz)*0.3+0.7*dz
-            dx=(xypos[0]-oldx)*0.3+0.7*dx
-            dy=(xypos[1]-oldy)*0.3+0.7*dy
+            dz=(zpos-oldz)*0.1+0.9*dz
+            dx=(xypos[0]-oldx)*0.1+0.9*dx
+            dy=(xypos[1]-oldy)*0.1+0.9*dy
     
             oldz=zpos
             oldx=xypos[0]
             oldy=xypos[1]        
         except:
             print "no speed"
-        speeds="dz: %0.2f dx: %0.2f dy: %0.2f" % (dz, dx, dy)     
-        targets="tsz: %0.2f tsx: %0.2f tsy: %0.2f" % (zspeed, xspeed, yspeed)     
+        speeds= "dz:  %+5.2f dx:  %+5.2f  dy: %+5.2f" % (dz, dx, dy)     
+        targets="tsz: %+5.2f tsx: %+5.2f tsy: %+5.2f" % (zspeed, xspeed, yspeed)     
         cv2.putText(frame, command,(10,100), font, .8,(255,255,255),2,cv2.LINE_AA)
         cv2.putText(frame, speeds,(10,150), font, .8,(255,255,255),2,cv2.LINE_AA)        
         cv2.putText(frame, targets,(10,200), font, .8,(255,255,255),2,cv2.LINE_AA) 
@@ -269,26 +285,40 @@ try:
                 print "Zpos: %i Xpos: %i Ypos: %i" % (zpos, xypos[0], xypos[1])
 
                 # compare to target speed               
-                if dz > zspeed:
-                    throttle-=tg
-                else:
-                    throttle+=tg
-                
-                if dx > xspeed:
-                    aileron-=ag
-                else:
-                    aileron+=ag
+                #if dz > zspeed:
+                #    throttle-=tg
+                #else:
+                #    throttle+=tg
+                e_dz=dz-zspeed    
+                e_iz+=e_dz
+                e_iz=clamp(e_iz, -200, 200)
+                throttle= e_dz*Kpz+THROTTLE_MID+Kiz*e_iz   
                     
-                if dy > yspeed:
-                    elevator-=eg
-                else:
-                    elevator+=eg                
+                e_dx=dx-xspeed    
+                e_ix+=e_dx
+                e_ix=clamp(e_ix, -200, 200)
+                aileron= e_dx*Kpx+AILERON_MID+Kix*e_ix   
+                
+                e_dy=dy-yspeed    
+                e_iy+=e_dy
+                e_iy=clamp(e_iy, -200, 200)
+                elevator= e_dy*Kpy+ELEVATOR_MID+Kiy*e_iy                   
+                
+                #if dx > xspeed:
+                #    aileron-=ag
+                #else:
+                #    aileron+=ag
+                    
+                #if dy > yspeed:
+                #    elevator-=eg
+                #else:
+                #    elevator+=eg                
             
-                clamp=lambda n, minn, maxn: (max(min(maxn, n), minn))
-                if zpos > 60:
+                
+                if zpos > 0:
                     print "highalt"
-                    aileron=clamp(aileron, 1495, 1510)
-                    elevator=clamp(elevator, 1495, 1510)
+                    aileron=clamp(aileron, 1400, 1600)
+                    elevator=clamp(elevator, 1400, 1600)
                 else: 
                     print "lowalt" 
                     aileron=clamp(aileron, 1499, 1501)
@@ -297,7 +327,7 @@ try:
                 if zpos > 65:
                     zspeed=-.1
                 else:
-                    zspeed=+.1
+                    zspeed=+.5
                 if xypos[0] > 350:
                     xspeed=-0.2 # move left
                 else:
@@ -310,7 +340,7 @@ try:
                 no_position_cnt=0    
             except:
                 no_position_cnt+=1
-                print "no position"
+                print "no position or error. STOPPED"
                 if no_position_cnt>15:
                     throttle=1000
                     start_flying=0  
@@ -325,7 +355,7 @@ try:
             cv2.imwrite(fname+str(ii)+".jpg", frame)
             ii+=1
         elif key == 119: #w
-            throttle=1200
+            throttle=1400
             aileron=1500 # turns left
             elevator=1500
             rudder=1500 # yaw, rotates the drone
