@@ -4,7 +4,7 @@ Created on Mon Feb 08 23:00:39 2016
 
 @author: perrytsao
 """
-import cv2
+import cv2  
 import numpy as np
 import pickle
 #import itertools
@@ -18,6 +18,9 @@ timestamp="{:%Y_%m_%d_%H_%M}".format(datetime.now())
 import control_params as cp
 import blob_detect as bd
 
+###############################################
+# drone parameters
+mass=.014 # 14g for drone and cage and the markers
 
 
 ###############################################
@@ -34,7 +37,7 @@ vc.set(cv2.CAP_PROP_FRAME_HEIGHT,height)
 vc.set(cv2.CAP_PROP_FPS,fps) 
 
 fourcc = cv2.VideoWriter_fourcc(*'DIVX')
-out = cv2.VideoWriter(timestamp+'_video.avi',fourcc, 20.0, (width,height),1)
+out = cv2.VideoWriter('flight_data\\'+timestamp+'_video.avi',fourcc, 20.0, (width,height),1)
 
 throttle=1000
 aileron=1500 # moves left/right
@@ -73,8 +76,8 @@ AILERON_MID=cp.AILERON_MID
 speeds=""
 
 zpos_target=65
-xpos_target=350
-ypos_target=250
+xpos_target=300
+ypos_target=200
 
 font = cv2.FONT_HERSHEY_SIMPLEX
 tic=timeit.default_timer()
@@ -112,9 +115,11 @@ try:
             dy_old=dy            
             dz_old=dz
             
-            dz=(zpos-oldz)*(1-cp.Fz)+cp.Fz*dz
-            dx=(xypos[0]-oldx)*(1-cp.Fx)+(cp.Fx)*dx
-            dy=(xypos[1]-oldy)*(1-cp.Fy)+(cp.Fy)*dy
+            #dz=(zpos-oldz)*(1-cp.Fz)+cp.Fz*dz
+            #dx=(xypos[0]-oldx)*(1-cp.Fx)+(cp.Fx)*dx
+            #dy=(xypos[1]-oldy)*(1-cp.Fy)+(cp.Fy)*dy
+                    
+            
             
             oldz=zpos
             oldx=xypos[0]
@@ -130,34 +135,41 @@ try:
             try: 
                 print "Zpos: %i Xpos: %i Ypos: %i" % (zpos, xypos[0], xypos[1])
 
-                e_dz_old=e_dz
-                e_dz=dz-zspeed    
+#                e_dz_old=e_dz
+#                e_dz=dz-zspeed    
+#                e_iz+=e_dz
+#                e_iz=clamp(e_iz, -200, 200)
+#                #e_d2z=e_dz-e_dz_old
+#                e_d2z=dz-dz_old #ignore command for derivative term
+#                
+#                throttle= cp.Kz*(e_dz*cp.Kpz+cp.Kiz*e_iz+cp.Kdz*e_d2z)+THROTTLE_MID
+                e_dz_old=e_dz                
+                e_dz=zpos-zpos_target
                 e_iz+=e_dz
-                e_iz=clamp(e_iz, -200, 200)
-                #e_d2z=e_dz-e_dz_old
-                e_d2z=dz-dz_old #ignore command for derivative term
-                throttle= cp.Kz*(e_dz*cp.Kpz+cp.Kiz*e_iz+cp.Kdz*e_d2z)+THROTTLE_MID
+                e_iz=clamp(e_iz, -10000, 10000)
+                e_d2z=e_dz-e_dz_old
+                throttle= cp.Kz*(e_dz*cp.Kpz+cp.Kiz*e_iz+cp.Kdz*e_d2z)+THROTTLE_MID    
   
                 e_dx_old=e_dx   
-                e_dx=dx-xspeed    
+                e_dx=xypos[0]-xpos_target
                 e_ix+=e_dx
-                e_ix=clamp(e_ix, -200, 200)
+                e_ix=clamp(e_ix, -20000, 20000)
                 #e_d2x=e_dx-e_dx_old
-                e_d2x=dx-dx_old
+                e_d2x=e_dx-e_dx_old
                 aileron = cp.Kx*(e_dx*cp.Kpx+cp.Kix*e_ix+cp.Kdx*e_d2x)+AILERON_MID   
                 
                 e_dy_old=e_dy
-                e_dy=dy-yspeed    
+                e_dy=xypos[1]-ypos_target    
                 e_iy+=e_dy
-                e_iy=clamp(e_iy, -200, 200)
+                e_iy=clamp(e_iy, -20000, 20000)
                 #e_d2y=e_dy-e_dy_old
-                e_d2y=dy-dy_old
+                e_d2y=e_dy-e_dy_old
                 elevator= cp.Ky*(e_dy*cp.Kpy+cp.Kiy*e_iy+cp.Kdy*e_d2y)+ELEVATOR_MID
                 
                 if zpos > 0:
                     print "highalt"
-                    aileron=clamp(aileron, 1400, 1600)
-                    elevator=clamp(elevator, 1400, 1600)
+                    aileron=clamp(aileron, 1000, 2000)
+                    elevator=clamp(elevator, 1000, 2000)
                 else: 
                     print "lowalt" 
                     aileron=clamp(aileron, 1499, 1501)
@@ -239,9 +251,9 @@ try:
                         xspeed, yspeed, zspeed,
                         throttle, aileron, elevator, rudder])))
         elif recording_data:
-            np.save(timestamp+'_flt'+str(flightnum)+'_'+'flightdata.npy', flightdata)
-            np.save(timestamp+'_flt'+str(flightnum)+'_'+'controldata.npy', controldata)
-            with open(timestamp+'_flt'+str(flightnum)+'_'+'controlvarnames.npy', 'wb') as f:
+            np.save('flight_data\\'+timestamp+'_flt'+str(flightnum)+'_'+'flightdata.npy', flightdata)
+            np.save('flight_data\\'+timestamp+'_flt'+str(flightnum)+'_'+'controldata.npy', controldata)
+            with open('flight_data\\'+timestamp+'_flt'+str(flightnum)+'_'+'controlvarnames.npy', 'wb') as f:
                 pickle.dump(controlvarnames, f)
             recording_data=0
             

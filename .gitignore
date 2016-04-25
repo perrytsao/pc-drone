@@ -1,0 +1,6 @@
+*.avi
+archive/
+debug_videos/
+flight_data/
+camera_cal/
+color_cal/

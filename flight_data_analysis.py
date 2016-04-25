@@ -8,16 +8,28 @@ Created on Sat Apr 02 20:35:11 2016
 import numpy as np
 import matplotlib.pyplot as plt
 import sys
+import glob
+import os
 
 plt.close('all')
 
 if len(sys.argv)>1:
     fltname='flight_data\\'+sys.argv[1]    
 else:
-    fltname='flight_data\\'+'2016_04_09_14_51_flt4_'
-controldata=np.load(fltname+'controldata.npy')
-controlvarnames=np.load(fltname+'controlvarnames.npy')
-flightdata=np.load(fltname+'flightdata.npy')
+    search_dir = "flight_data\\"
+    # remove anything from the list that is not a file (directories, symlinks)
+    # thanks to J.F. Sebastion for pointing out that the requirement was a list 
+    # of files (presumably not including directories)  
+    files = filter(os.path.isfile, glob.glob(search_dir + "*.npy"))
+    files.sort(key=lambda x:os.path.getmtime(x))
+    #fltname='flight_data\\'+'2016_04_13_21_41_flt1_'
+    m=files[-1]
+    ms=m.split('_')
+    ms.pop() 
+    fltname='_'.join(ms)
+controldata=np.load(fltname+'_controldata.npy')
+controlvarnames=np.load(fltname+'_controlvarnames.npy')
+flightdata=np.load(fltname+'_flightdata.npy')
 
 cpdict=dict(zip(controlvarnames, controldata))
 
@@ -68,7 +80,7 @@ plt.show()
 fig3=plt.figure(3)
 plt.clf()
 plt.plot(t,e_dx, t,e_dy, t,e_dz)
-fig3.canvas.set_window_title('Velocity Error (e_dx, e_dy, e_dz)')
+fig3.canvas.set_window_title('Position Error (e_dx, e_dy, e_dz)')
 plt.show()
     
 fig4=plt.figure(4)
@@ -88,16 +100,31 @@ plt.show()
 
 fig6=plt.figure(6)
 plt.clf()
-plt.subplot(311)
+plt.subplot(411)
 #aileron = cp.Kx*(e_dx*cp.Kpx+cp.Kix*e_ix+cp.Kdx*e_d2x)+AILERON_MID  
-plt.plot(t, e_dx*cpdict['Kpx'], t, e_ix*cpdict['Kix'], t, e_d2x*cpdict['Kdx'])
-plt.subplot(312)
-plt.plot(t, e_dy*cpdict['Kpy'], t, e_iy*cpdict['Kiy'], t, e_d2y*cpdict['Kdy'])
-plt.subplot(313)
-plt.plot(t, e_dz*cpdict['Kpz'], label='P')
-plt.plot(t, e_iz*cpdict['Kiz'], label='I')
-plt.plot(t, e_d2z*cpdict['Kdz'],label='D')
-fig6.canvas.set_window_title('Control ouputs - PID')
+plt.plot(t, x, label='X')
+plt.plot(t, y, label='Y')
+plt.plot(t, z, label='Z')
 plt.legend()
+
+plt.subplot(412)
+plt.plot(t, e_dx*cpdict['Kpx']*cpdict['Kx'], label='P')
+plt.plot(t, e_ix*cpdict['Kix']*cpdict['Kx'], label='I')
+plt.plot(t, e_d2x*cpdict['Kdx']*cpdict['Kx'],label='D')
+plt.legend()
+
+plt.subplot(413)
+plt.plot(t, e_dy*cpdict['Kpy']*cpdict['Ky'], label='P')
+plt.plot(t, e_iy*cpdict['Kiy']*cpdict['Ky'], label='I')
+plt.plot(t, e_d2y*cpdict['Kdy']*cpdict['Ky'],label='D')
+plt.legend()
+
+plt.subplot(414)
+plt.plot(t, e_dz*cpdict['Kpz']*cpdict['Kz'], label='P')
+plt.plot(t, e_iz*cpdict['Kiz']*cpdict['Kz'], label='I')
+plt.plot(t, e_d2z*cpdict['Kdz']*cpdict['Kz'],label='D')
+plt.legend()
+fig6.canvas.set_window_title('Control ouputs - PID')
+
 plt.show()
 
