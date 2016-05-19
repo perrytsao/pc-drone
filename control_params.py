@@ -3,9 +3,9 @@ Kiz=.1
 Kdz=20
 Kz=-1
 
-Kpx=.3 
-Kix=.03
-Kdx=20
+Kpx=1
+Kix=.01
+Kdx=10
 Kx=-1
 
 Kpy=Kpx
@@ -28,6 +28,6 @@ Fx=0.5
 Fy=0.5
 Fz=0.5
 #############################
-THROTTLE_MID=1500
+THROTTLE_MID=1350
 ELEVATOR_MID=1500
 AILERON_MID=1500

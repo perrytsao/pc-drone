@@ -21,9 +21,83 @@ import blob_detect as bd
 ###############################################
 # drone parameters
 mass=.014 # 14g for drone and cage and the markers
-
+          # 50px in x,y directions = 7cm
+          # Distance between blobs = 7cm
+          # 49.1 px (distance between blobs) => 23.25" height
+          # 74 px => 15.5" height
+# z axis flight sequence calculations
+# maxrate= 1 cm/s
+# 20 samples / s
+# 25px in z axis = 8 in = 20cm
+# 1.25px / cm
+# 1.25px / s
+# 0.0625px / sample
 
 ###############################################
+
+def flight_sequence(seqname, xseq_list, yseq_list, zseq_list):
+    # This function takes sequence lists and returns sequence lists.
+    # Internally it uses numpy arrays.
+    # 
+    # THe sequence lists must have some length so that the starting position
+    # is known. Empty lists are not allowed.
+    xseq=np.array(xseq_list)        
+    yseq=np.array(yseq_list)            
+    zseq=np.array(zseq_list)            
+    
+    seqrate = 2    
+    if seqname == 'land':
+        zpoints=np.abs(np.round((zseq[-1]-45)/seqrate))
+        zseq=np.concatenate((zseq, np.linspace(zseq[-1], 30, zpoints)))
+        xseq=np.concatenate((xseq, np.ones(zpoints)*xseq[-1]))
+        yseq=np.concatenate((yseq, np.ones(zpoints)*yseq[-1]))
+    elif seqname == 'takeoff':
+        zpoints=np.abs(np.round((zseq[-1]-65)/seqrate))
+        zseq=np.concatenate((zseq, np.linspace(zseq[-1], 65, zpoints)))
+        xseq=np.concatenate((xseq, np.ones(zpoints)*xseq[-1]))
+        yseq=np.concatenate((yseq, np.ones(zpoints)*yseq[-1]))
+    elif seqname == 'box': # goes in a 10cm box pattern 
+        pts=np.abs(np.round((75)/seqrate))        
+        fwd=np.linspace(0, 75, pts)
+        
+        xseq=np.concatenate((xseq, fwd+xseq[-1]))
+        xseq=np.concatenate((xseq, np.ones(pts)*xseq[-1]))
+        xseq=np.concatenate((xseq, (-1*fwd)+xseq[-1]))
+        xseq=np.concatenate((xseq, np.ones(pts)*xseq[-1]))
+        
+        yseq=np.concatenate((yseq, np.ones(pts)*yseq[-1]))        
+        yseq=np.concatenate((yseq, (-1*fwd)+yseq[-1]))
+        yseq=np.concatenate((yseq, np.ones(pts)*yseq[-1]))
+        yseq=np.concatenate((yseq, (fwd)+yseq[-1]))
+        
+        zseq=np.concatenate((zseq, np.ones(4*pts)*zseq[-1]))
+    elif seqname == 'up':
+        zpoints=np.abs(np.round(12/seqrate))
+        zseq=np.concatenate((zseq, np.linspace(zseq[-1], zseq[-1]+12, zpoints)))
+        xseq=np.concatenate((xseq, np.ones(zpoints)*xseq[-1]))
+        yseq=np.concatenate((yseq, np.ones(zpoints)*yseq[-1]))
+    elif seqname == 'down':
+        zpoints=np.abs(np.round(12/seqrate))
+        zseq=np.concatenate((zseq, np.linspace(zseq[-1], zseq[-1]-12, zpoints)))
+        xseq=np.concatenate((xseq, np.ones(zpoints)*xseq[-1]))
+        yseq=np.concatenate((yseq, np.ones(zpoints)*yseq[-1]))   
+    elif seqname == 'left_spot':    
+        xpoints=np.abs(np.round((xseq[-1]-200)/1))
+        xseq=np.concatenate((xseq, np.linspace(xseq[-1], 200, xpoints)))
+        yseq=np.concatenate((yseq, np.ones(xpoints)*yseq[-1]))
+        zseq=np.concatenate((zseq, np.ones(xpoints)*zseq[-1]))
+    elif seqname == 'right_spot':    
+        xpoints=np.abs(np.round((xseq[-1]-400)/1))
+        xseq=np.concatenate((xseq, np.linspace(xseq[-1], 400, xpoints)))
+        yseq=np.concatenate((yseq, np.ones(xpoints)*yseq[-1]))
+        zseq=np.concatenate((zseq, np.ones(xpoints)*zseq[-1]))
+    elif seqname == 'hover':    
+        xpoints=300 # 15s of hovering in one spot
+        xseq=np.concatenate((xseq, np.ones(xpoints)*xseq[-1]))
+        yseq=np.concatenate((yseq, np.ones(xpoints)*yseq[-1]))
+        zseq=np.concatenate((zseq, np.ones(xpoints)*zseq[-1]))
+    return list(xseq), list(yseq), list(zseq)
+
 cv2.namedWindow("preview")
 vc = cv2.VideoCapture(1)
 
@@ -50,9 +124,9 @@ command=""
 start_flying=0
 no_position_cnt=0
 
-oldz=45
-oldx=350
-oldy=250
+#oldz=45
+#oldx=350
+#oldy=250
 dz=0
 dx=0
 dy=0
@@ -75,9 +149,14 @@ AILERON_MID=cp.AILERON_MID
 
 speeds=""
 
-zpos_target=65
 xpos_target=300
 ypos_target=200
+zpos_target=65
+
+xpos_target_seq=[xpos_target]
+ypos_target_seq=[ypos_target]
+zpos_target_seq=[zpos_target]
+
 
 font = cv2.FONT_HERSHEY_SIMPLEX
 tic=timeit.default_timer()
@@ -85,17 +164,30 @@ toc=0
 flighttic=timeit.default_timer()
 flighttoc=timeit.default_timer()
 flightnum=0
+theta=0
+
+
+
+# Flight modes
+NORMAL_FM=0
+LANDING=1
+PROGRAM_SEQ_FM=2
+
+flt_mode=NORMAL_FM
+
+
+
 
 recording_data=0
 try: 
-    arduino=serial.Serial('COM3', 115200, timeout=.001)
+    arduino=serial.Serial('COM4', 115200, timeout=.001)
     time.sleep(1) #give the connection a second to settle    
     
     if vc.isOpened(): # try to get the first frame
         rval, frame_o = vc.read()
         #frame_undistort=bd.undistort_crop(np.rot90(frame_o, 2))
         frame_undistort=bd.undistort_crop(frame_o)   
-        frame, zpos, xypos=bd.add_blobs(frame_undistort)
+        frame, zpos, xypos, theta=bd.add_blobs(frame_undistort)
         #frame, zpos, xypos=bd.add_blobs(frame_o)
     else:
         rval = False
@@ -107,25 +199,19 @@ try:
         print("deltaT: %0.4f  fps: %0.1f" % (toc - toc_old, 1/(toc-toc_old)))
             
         frame_undistort=bd.undistort_crop(frame_o)
-        frame, zpos, xypos=bd.add_blobs(frame_undistort)
+        frame, zpos, xypos, theta=bd.add_blobs(frame_undistort)
         
         #Calculate speed from image
-        try:
-            dx_old=dx
-            dy_old=dy            
-            dz_old=dz
-            
-            #dz=(zpos-oldz)*(1-cp.Fz)+cp.Fz*dz
-            #dx=(xypos[0]-oldx)*(1-cp.Fx)+(cp.Fx)*dx
-            #dy=(xypos[1]-oldy)*(1-cp.Fy)+(cp.Fy)*dy
-                    
-            
-            
-            oldz=zpos
-            oldx=xypos[0]
-            oldy=xypos[1]        
-        except:
-            print "no speed"
+#        try:
+#            dx_old=dx
+#            dy_old=dy            
+#            dz_old=dz
+#            
+##            oldz=zpos
+##            oldx=xypos[0]
+##            oldy=xypos[1]        
+#        except:
+#            print "no speed"
         
         if start_flying:
             
@@ -135,14 +221,6 @@ try:
             try: 
                 print "Zpos: %i Xpos: %i Ypos: %i" % (zpos, xypos[0], xypos[1])
 
-#                e_dz_old=e_dz
-#                e_dz=dz-zspeed    
-#                e_iz+=e_dz
-#                e_iz=clamp(e_iz, -200, 200)
-#                #e_d2z=e_dz-e_dz_old
-#                e_d2z=dz-dz_old #ignore command for derivative term
-#                
-#                throttle= cp.Kz*(e_dz*cp.Kpz+cp.Kiz*e_iz+cp.Kdz*e_d2z)+THROTTLE_MID
                 e_dz_old=e_dz                
                 e_dz=zpos-zpos_target
                 e_iz+=e_dz
@@ -153,7 +231,7 @@ try:
                 e_dx_old=e_dx   
                 e_dx=xypos[0]-xpos_target
                 e_ix+=e_dx
-                e_ix=clamp(e_ix, -20000, 20000)
+                e_ix=clamp(e_ix, -200000, 200000)
                 #e_d2x=e_dx-e_dx_old
                 e_d2x=e_dx-e_dx_old
                 aileron = cp.Kx*(e_dx*cp.Kpx+cp.Kix*e_ix+cp.Kdx*e_d2x)+AILERON_MID   
@@ -161,7 +239,7 @@ try:
                 e_dy_old=e_dy
                 e_dy=xypos[1]-ypos_target    
                 e_iy+=e_dy
-                e_iy=clamp(e_iy, -20000, 20000)
+                e_iy=clamp(e_iy, -200000, 200000)
                 #e_d2y=e_dy-e_dy_old
                 e_d2y=e_dy-e_dy_old
                 elevator= cp.Ky*(e_dy*cp.Kpy+cp.Kiy*e_iy+cp.Kdy*e_d2y)+ELEVATOR_MID
@@ -172,31 +250,9 @@ try:
                     elevator=clamp(elevator, 1000, 2000)
                 else: 
                     print "lowalt" 
-                    aileron=clamp(aileron, 1499, 1501)
-                    elevator=clamp(elevator, 1499, 1501)
-                # set target speeds                
+                    aileron=clamp(aileron, 1490, 1510)
+                    elevator=clamp(elevator, 1490, 1510)
                 
-                zpeed_old=zspeed
-                zspeed=-1*(zpos-zpos_target)*cp.Ksz
-                zspeed=clamp(zspeed, -0.1, 0.5)
-                
-                xspeed=-1*(xypos[0]-xpos_target)*cp.Ksx
-                xspeed=clamp(xspeed, -0.02, 0.02)
-                
-                yspeed=-1*(xypos[1]-ypos_target)*cp.Ksy
-                yspeed=clamp(yspeed, -0.02, 0.02)
-#                if zpos > zpos_target:
-#                    zspeed=-.1
-#                else:
-#                    zspeed=+.5
-#                if xypos[0] > xpos_target:
-#                    xspeed=-0.2 # move left
-#                else:
-#                    xspeed=0.2 # move right
-#                if xypos[1] > ypos_target:
-#                    yspeed=-0.2 # move up
-#                else:
-#                    yspeed=+0.2 # move down
                      
                 no_position_cnt=0    
             except Exception as e:
@@ -232,6 +288,7 @@ try:
         cv2.putText(frame, gains,(10,125), font, .8,(255,255,255),2,cv2.LINE_AA)         
         cv2.putText(frame, errors_z,(10,150), font, .8,(255,255,255),2,cv2.LINE_AA)         
         cv2.putText(frame, 'Flt#: {0} Time:{1:0.3f}'.format(flightnum,flighttoc-flighttic),(10,175), font, .8,(255,255,255),2,cv2.LINE_AA)
+        cv2.rectangle(frame, (int(xpos_target)-5, int(ypos_target)-5), (int(xpos_target)+5, int(ypos_target)+5), (255,0,0), thickness=1, lineType=8, shift=0)
         #dst=cv2.resize(frame, (1280,960), cv2.INTER_NEAREST)
         cv2.imshow("preview", frame)
         key = cv2.waitKey(wait_time)
@@ -250,6 +307,11 @@ try:
                         e_dz, e_iz, e_d2z,
                         xspeed, yspeed, zspeed,
                         throttle, aileron, elevator, rudder])))
+            if len(xpos_target_seq) > 1:
+                xpos_target=xpos_target_seq.pop(0)
+                ypos_target=ypos_target_seq.pop(0)
+                zpos_target=zpos_target_seq.pop(0)
+                
         elif recording_data:
             np.save('flight_data\\'+timestamp+'_flt'+str(flightnum)+'_'+'flightdata.npy', flightdata)
             np.save('flight_data\\'+timestamp+'_flt'+str(flightnum)+'_'+'controldata.npy', controldata)
@@ -275,28 +337,71 @@ try:
             flighttic=timeit.default_timer()
             flighttoc=0
             flightnum+=1
-            '''np.array([xpos, ypos, zpos,
-            dx, dy, dz,
-            e_dx, e_ix, e_d2x,
-            e_dy, e_iy, e_d2y,
-            e_dz, e_iz, e_d2z,
-            xspeed, yspeed, zspeed,
-            throttle, aileron, elevator, rudder])'''
+
             reload(cp)
             # this lists out all the variables in module cp
             # and records their values. 
             controlvarnames=[item for item in dir(cp) if not item.startswith("__")]
             controldata=[eval('cp.'+item) for item in controlvarnames]
-            
-            
+                        
             print "START FLYING"
+        elif key == ord('e'): 
+            throttle=THROTTLE_MID
+            aileron=AILERON_MID # turns left
+            elevator=ELEVATOR_MID
+            e_ix = 0; e_iy = 0; e_iz = 0
+            rudder=1500 # yaw, rotates the drone
+            start_flying=1
+            recording_data=1
+            flightdata=np.zeros(23)
+            flighttic=timeit.default_timer()
+            flighttoc=0
+            flightnum+=1
+
+            reload(cp)
+            # this lists out all the variables in module cp
+            # and records their values. 
+            controlvarnames=[item for item in dir(cp) if not item.startswith("__")]
+            controldata=[eval('cp.'+item) for item in controlvarnames]    
+            
+            xpos_target_seq, ypos_target_seq, zpos_target_seq= flight_sequence(
+                'hover', xpos_target_seq, ypos_target_seq, zpos_target_seq)              
+            
+            xpos_target_seq, ypos_target_seq, zpos_target_seq= flight_sequence(
+                'right_spot', xpos_target_seq, ypos_target_seq, zpos_target_seq)              
+            
+            xpos_target_seq, ypos_target_seq, zpos_target_seq= flight_sequence(
+                'left_spot', xpos_target_seq, ypos_target_seq, zpos_target_seq)              
+                        
+            flt_mode=PROGRAM_SEQ_FM
+            
+            print "START FLYING"            
+            
         elif key == 115: #s
             throttle=1000
             start_flying=0
         elif key == 114: #r - reset the serial port so Arduino will bind to another CX-10
             arduino.close()
-            arduino=serial.Serial('COM3', 115200, timeout=.001)
-    
+            arduino=serial.Serial('COM4', 115200, timeout=.001)
+        elif key == ord('1'):
+            xpos_target_seq, ypos_target_seq, zpos_target_seq= flight_sequence(
+                'takeoff', xpos_target_seq, ypos_target_seq, zpos_target_seq)
+        elif key == ord('2'):
+            xpos_target_seq, ypos_target_seq, zpos_target_seq= flight_sequence(
+                'land', xpos_target_seq, ypos_target_seq, zpos_target_seq)
+        elif key == ord('3'):
+            xpos_target_seq, ypos_target_seq, zpos_target_seq= flight_sequence(
+                'box', xpos_target_seq, ypos_target_seq, zpos_target_seq)
+        elif key == ord('4'):
+            xpos_target_seq, ypos_target_seq, zpos_target_seq= flight_sequence(
+                'left_spot', xpos_target_seq, ypos_target_seq, zpos_target_seq)   
+        elif key == ord('5'):
+            xpos_target_seq, ypos_target_seq, zpos_target_seq= flight_sequence(
+                'right_spot', xpos_target_seq, ypos_target_seq, zpos_target_seq)                
+                
+            
+            
+            
         # print out the time needed to execute everything except the image reload
         toc2=timeit.default_timer()
         print("deltaT_execute: %0.4f" % (toc2 - toc))
@@ -311,7 +416,7 @@ finally:
     # re-open the serial port which will w for Arduino Uno to do a reset
     # this forces the quadcopter to power off motors.  Will need to power
     # cycle the drone to reconnect
-    arduino=serial.Serial('COM3', 115200, timeout=.001)
+    arduino=serial.Serial('COM4', 115200, timeout=.001)
     arduino.close()
     # close it again so it can be reopened the next time it is run.      
     
