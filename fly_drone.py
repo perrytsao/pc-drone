@@ -350,7 +350,7 @@ try:
             # and records their values. 
             controlvarnames=[item for item in dir(cp) if not item.startswith("__")]
             controldata=[eval('cp.'+item) for item in controlvarnames]
-                        
+            flt_mode=NORMAL_FM           
             print "START FLYING"
         elif key == ord('e'): 
             throttle=THROTTLE_MID
@@ -389,8 +389,9 @@ try:
             print "START FLYING"            
             
         elif key == 115: #s
-            throttle=1000
-            start_flying=0
+            #throttle=1000
+            #start_flying=0
+            flt_mode = LANDING_FM
         elif key == 114: #r - reset the serial port so Arduino will bind to another CX-10
             arduino.close()
             arduino=serial.Serial('COM4', 115200, timeout=.001)
