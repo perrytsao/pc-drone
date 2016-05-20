@@ -170,7 +170,7 @@ theta=0
 
 # Flight modes
 NORMAL_FM=0
-LANDING=1
+LANDING_FM=1
 PROGRAM_SEQ_FM=2
 
 flt_mode=NORMAL_FM
@@ -219,42 +219,46 @@ try:
             #frame_pad=cv2.copyMakeBorder(frame,91,0,75,00,cv2.BORDER_CONSTANT,value=[255,0,0])
             #out.write(frame_pad)
             try: 
-                print "Zpos: %i Xpos: %i Ypos: %i" % (zpos, xypos[0], xypos[1])
-
-                e_dz_old=e_dz                
-                e_dz=zpos-zpos_target
-                e_iz+=e_dz
-                e_iz=clamp(e_iz, -10000, 10000)
-                e_d2z=e_dz-e_dz_old
-                throttle= cp.Kz*(e_dz*cp.Kpz+cp.Kiz*e_iz+cp.Kdz*e_d2z)+THROTTLE_MID    
-  
-                e_dx_old=e_dx   
-                e_dx=xypos[0]-xpos_target
-                e_ix+=e_dx
-                e_ix=clamp(e_ix, -200000, 200000)
-                #e_d2x=e_dx-e_dx_old
-                e_d2x=e_dx-e_dx_old
-                aileron = cp.Kx*(e_dx*cp.Kpx+cp.Kix*e_ix+cp.Kdx*e_d2x)+AILERON_MID   
+                if flt_mode <> LANDING_FM:
+                    print "Zpos: %i Xpos: %i Ypos: %i" % (zpos, xypos[0], xypos[1])
+    
+                    e_dz_old=e_dz                
+                    e_dz=zpos-zpos_target
+                    e_iz+=e_dz
+                    e_iz=clamp(e_iz, -10000, 10000)
+                    e_d2z=e_dz-e_dz_old
+                    throttle= cp.Kz*(e_dz*cp.Kpz+cp.Kiz*e_iz+cp.Kdz*e_d2z)+THROTTLE_MID    
+      
+                    e_dx_old=e_dx   
+                    e_dx=xypos[0]-xpos_target
+                    e_ix+=e_dx
+                    e_ix=clamp(e_ix, -200000, 200000)
+                    #e_d2x=e_dx-e_dx_old
+                    e_d2x=e_dx-e_dx_old
+                    aileron = cp.Kx*(e_dx*cp.Kpx+cp.Kix*e_ix+cp.Kdx*e_d2x)+AILERON_MID   
+                    
+                    e_dy_old=e_dy
+                    e_dy=xypos[1]-ypos_target    
+                    e_iy+=e_dy
+                    e_iy=clamp(e_iy, -200000, 200000)
+                    #e_d2y=e_dy-e_dy_old
+                    e_d2y=e_dy-e_dy_old
+                    elevator= cp.Ky*(e_dy*cp.Kpy+cp.Kiy*e_iy+cp.Kdy*e_d2y)+ELEVATOR_MID
+                    
+                    if zpos > 0:
+                        print "highalt"
+                        aileron=clamp(aileron, 1000, 2000)
+                        elevator=clamp(elevator, 1000, 2000)
+                    else: 
+                        print "lowalt" 
+                        aileron=clamp(aileron, 1490, 1510)
+                        elevator=clamp(elevator, 1490, 1510)
+                    no_position_cnt=0
+                else: # landing mode
+                    throttle=throttle-20
                 
-                e_dy_old=e_dy
-                e_dy=xypos[1]-ypos_target    
-                e_iy+=e_dy
-                e_iy=clamp(e_iy, -200000, 200000)
-                #e_d2y=e_dy-e_dy_old
-                e_d2y=e_dy-e_dy_old
-                elevator= cp.Ky*(e_dy*cp.Kpy+cp.Kiy*e_iy+cp.Kdy*e_d2y)+ELEVATOR_MID
                 
-                if zpos > 0:
-                    print "highalt"
-                    aileron=clamp(aileron, 1000, 2000)
-                    elevator=clamp(elevator, 1000, 2000)
-                else: 
-                    print "lowalt" 
-                    aileron=clamp(aileron, 1490, 1510)
-                    elevator=clamp(elevator, 1490, 1510)
                 
-                     
-                no_position_cnt=0    
             except Exception as e:
                 print (e)
                 no_position_cnt+=1
@@ -311,6 +315,9 @@ try:
                 xpos_target=xpos_target_seq.pop(0)
                 ypos_target=ypos_target_seq.pop(0)
                 zpos_target=zpos_target_seq.pop(0)
+                print 'seq len %i' % len(xpos_target_seq)
+            elif flt_mode == PROGRAM_SEQ_FM:
+                flt_mode = LANDING_FM
                 
         elif recording_data:
             np.save('flight_data\\'+timestamp+'_flt'+str(flightnum)+'_'+'flightdata.npy', flightdata)
@@ -364,6 +371,10 @@ try:
             controlvarnames=[item for item in dir(cp) if not item.startswith("__")]
             controldata=[eval('cp.'+item) for item in controlvarnames]    
             
+            
+            xpos_target_seq=[xpos_target]
+            ypos_target_seq=[ypos_target]
+            zpos_target_seq=[zpos_target]
             xpos_target_seq, ypos_target_seq, zpos_target_seq= flight_sequence(
                 'hover', xpos_target_seq, ypos_target_seq, zpos_target_seq)              
             
