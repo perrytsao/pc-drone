@@ -3,9 +3,28 @@ import numpy as np
 import itertools
 import math
 
-def undistort_crop(orig_img):
+# original undistort function.  Took 15ms to run. New version below only takes 3ms.
+def undistort_crop2(orig_img):
+      
     #undistort and crop
+    #cv2.undistort(src, cameraMatrix, distCoeffs[, dst[, newCameraMatrix]]) -> dst
     dst = cv2.undistort(orig_img, mtx, dist, None, newcameramtx)
+    x,y,w,h = roi
+    crop_frame = dst[y:y+h, x:x+w]    
+    return crop_frame
+
+# create maps for undistortion
+def init_undistort():
+    #cv2.initUndistortRectifyMap(cameraMatrix, distCoeffs, R, newCameraMatrix, size, m1type[, map1[, map2]]) -> map1, map2
+    frame_size=(640,480)
+    map1, map2=cv2.initUndistortRectifyMap(mtx, dist, None, newcameramtx, frame_size, cv2.CV_32FC1)
+    return map1, map2
+   
+# this is a faster undistort_crop that only does remapping. Requires call to init_undistort first to
+# to create the map1 and map2   
+def undistort_crop(orig_img):
+    #cv2.remap(src, map1, map2, interpolation[, dst[, borderMode[, borderValue]]]) -> dst   
+    dst = cv2.remap(orig_img, map1, map2, cv2.INTER_LINEAR)
     x,y,w,h = roi
     crop_frame = dst[y:y+h, x:x+w]    
     return crop_frame
@@ -152,3 +171,5 @@ newcameramtx=calfile['newcameramtx']
 roi=calfile['roi']
 mtx=calfile['mtx']
 dist=calfile['dist']
+
+map1, map2=init_undistort()
